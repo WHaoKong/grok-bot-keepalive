@@ -1,0 +1,47 @@
+name: Grok Bot keepalive
+
+# Asia/Shanghai (UTC+8, no daylight saving).
+# Active window: 07:00 through 01:00 local, every 5 minutes.
+# 07:00–00:55 CST = 23:00–16:55 UTC
+# 01:00 CST       = 17:00 UTC
+on:
+  schedule:
+    - cron: "*/5 23,0-16 * * *"
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: POST Grok Bot webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.GROK_BOT_WEBHOOK_URL }}
+          WEBHOOK_KEY: ${{ secrets.GROK_BOT_WEBHOOK_KEY }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ] || [ -z "$WEBHOOK_KEY" ]; then
+            echo "Add repository secrets GROK_BOT_WEBHOOK_URL and GROK_BOT_WEBHOOK_KEY."
+            exit 1
+          fi
+          body_file="$(mktemp)"
+          http_code="$(
+            curl --silent --show-error \
+              --output "$body_file" \
+              --write-out "%{http_code}" \
+              --max-time 30 \
+              --request POST \
+              --header "Authorization: Bearer ${WEBHOOK_KEY}" \
+              --header "Content-Type: application/json" \
+              --data '{"source":"github-actions","purpose":"keepalive"}' \
+              "$WEBHOOK_URL"
+          )"
+          echo "HTTP ${http_code}"
+          cat "$body_file"
+          echo
+          rm -f "$body_file"
+          if [ "$http_code" != "200" ]; then
+            exit 1
+          fi
